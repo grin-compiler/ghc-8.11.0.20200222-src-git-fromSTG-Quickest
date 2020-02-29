@@ -412,7 +412,7 @@ coreToStgExpr e0@(Case scrut bndr _ alts) = do
     let stg = StgCase scrut2 bndr (mkStgAltType bndr alts) alts2
     -- See (U2) in Note [Implementing unsafeCoerce] in base:Unsafe.Coerce
     case scrut2 of
-      StgApp id [] | idName id == unsafeEqualityProofName ->
+      StgApp id [] _ | idName id == unsafeEqualityProofName ->
         case alts2 of
           [(_, [_co], rhs)] ->
             return rhs
