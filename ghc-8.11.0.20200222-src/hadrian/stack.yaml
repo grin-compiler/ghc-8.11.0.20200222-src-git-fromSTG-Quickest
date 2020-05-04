@@ -5,7 +5,9 @@ extra-deps:
 
 packages:
 - '.'
-- 'patched-deps/Cabal-3.0.0.0'
+- 'patched-deps/Cabal'
+
+allow-newer: true
 
 nix:
    enable: false

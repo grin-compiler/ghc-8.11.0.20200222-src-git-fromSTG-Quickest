@@ -294,7 +294,7 @@ stgCseTopLvlRhs _ (StgRhsCon ccs dataCon args)
 -- Trivial cases
 stgCseExpr :: CseEnv -> InStgExpr -> OutStgExpr
 stgCseExpr env (StgApp fun args (t,o))
-    = StgApp fun' args' (t,o ++ "/CSE-StgApp")
+    = StgApp fun' args' (t,o ++ "/CSEStgApp")
   where fun' = substVar env fun
         args' = substArgs env args
 stgCseExpr _ (StgLit lit)
@@ -322,7 +322,7 @@ stgCseExpr env (StgCase scrut bndr ty alts)
 -- To be removed by a variable use when found in the CSE environment
 stgCseExpr env (StgConApp dataCon args tys)
     | Just bndr' <- envLookup dataCon args' env
-    = StgApp bndr' [] (idType bndr', "CSE-StgConApp")
+    = StgApp bndr' [] (idType bndr', "CSEStgConApp")
     | otherwise
     = StgConApp dataCon args' tys
   where args' = substArgs env args

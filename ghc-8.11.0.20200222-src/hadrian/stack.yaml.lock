@@ -11,13 +11,6 @@ packages:
       sha256: 91502601a560862a5b90d776c0bd58bc2779ba5b7945c984817eaa3b9ca64564
   original:
     hackage: happy-1.19.12
-- completed:
-    hackage: Cabal-3.0.0.0@sha256:1ba37b8d80e89213b17db7b8b9ea0108da55ca65f8c0cbb7433881a284c5cf67,26027
-    pantry-tree:
-      size: 71616
-      sha256: 4f16f0a65304ab22f01cb7f6d25db2f15a168f4cefacde7864cb1e02eb3ea867
-  original:
-    hackage: Cabal-3.0.0.0@sha256:1ba37b8d80e89213b17db7b8b9ea0108da55ca65f8c0cbb7433881a284c5cf67
 snapshots:
 - completed:
     size: 523700

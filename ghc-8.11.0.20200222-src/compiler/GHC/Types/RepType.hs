@@ -19,6 +19,7 @@ module GHC.Types.RepType
     -- * Unboxed sum representation type
     ubxSumRepType, layoutUbxSum, typeSlotTy, SlotTy (..),
     slotPrimRep, primRepSlot
+    , fitsIn
   ) where
 
 #include "HsVersions.h"
@@ -157,9 +158,10 @@ ubxSumRepType constrs0
   -- has at least two disjuncts. But it could happen if a user writes, e.g.,
   -- forall (a :: TYPE (SumRep [IntRep])). ...
   -- which could never be instantiated. We still don't want to panic.
+{-
   | constrs0 `lengthLessThan` 2
   = [WordSlot]
-
+-}
   | otherwise
   = let
       combine_alts :: [SortedSlotTys]  -- slots of constructors
@@ -231,20 +233,37 @@ layoutUbxSum sum_slots0 arg_slots0 =
 --
 -- TODO(michalt): We should probably introduce `SlotTy`s for 8-/16-/32-bit
 -- values, so that we can pack things more tightly.
-data SlotTy = PtrSlot | WordSlot | Word64Slot | FloatSlot | DoubleSlot
-  deriving (Eq, Ord)
+--data SlotTy = PtrSlot | WordSlot | Word64Slot | FloatSlot | DoubleSlot
+data SlotTy
+  = LiftedSlot | UnliftedSlot
+  | IntSlot  | Int8Slot  | Int16Slot  | Int32Slot  | Int64Slot
+  | WordSlot | Word8Slot | Word16Slot | Word32Slot | Word64Slot
+  | AddrSlot
+  | FloatSlot | DoubleSlot
+  deriving (Eq, Ord, Show)
     -- Constructor order is important! If slot A could fit into slot B
     -- then slot A must occur first.  E.g.  FloatSlot before DoubleSlot
     --
     -- We are assuming that WordSlot is smaller than or equal to Word64Slot
     -- (would not be true on a 128-bit machine)
-
+{-
+  = VoidRep
+  | LiftedRep
+  | UnliftedRep   -- ^ Unlifted pointer
+  | Int8Rep       -- ^ Signed, 8-bit value
+  | Int16Rep      -- ^ Signed, 16-bit value
+  | Int32Rep      -- ^ Signed, 32-bit value
+  | Int64Rep      -- ^ Signed, 64 bit value (with 32-bit words only)
+  | Word8Rep      -- ^ Unsigned, 8 bit value
+  | Word16Rep     -- ^ Unsigned, 16 bit value
+  | Word32Rep     -- ^ Unsigned, 32 bit value
+  | Word64Rep     -- ^ Unsigned, 64 bit value (with 32-bit words only)
+  | AddrRep       -- ^ A pointer, but /not/ to a Haskell value (use '(Un)liftedRep')
+  | FloatRep
+  | DoubleRep
+-}
 instance Outputable SlotTy where
-  ppr PtrSlot    = text "PtrSlot"
-  ppr Word64Slot = text "Word64Slot"
-  ppr WordSlot   = text "WordSlot"
-  ppr DoubleSlot = text "DoubleSlot"
-  ppr FloatSlot  = text "FloatSlot"
+  ppr = text . show
 
 typeSlotTy :: UnaryType -> Maybe SlotTy
 typeSlotTy ty
@@ -255,33 +274,48 @@ typeSlotTy ty
 
 primRepSlot :: PrimRep -> SlotTy
 primRepSlot VoidRep     = pprPanic "primRepSlot" (text "No slot for VoidRep")
-primRepSlot LiftedRep   = PtrSlot
-primRepSlot UnliftedRep = PtrSlot
-primRepSlot IntRep      = WordSlot
-primRepSlot Int8Rep     = WordSlot
-primRepSlot Int16Rep    = WordSlot
-primRepSlot Int32Rep    = WordSlot
-primRepSlot Int64Rep    = Word64Slot
+primRepSlot LiftedRep   = LiftedSlot
+primRepSlot UnliftedRep = UnliftedSlot
+primRepSlot IntRep      = IntSlot
+primRepSlot Int8Rep     = Int8Slot
+primRepSlot Int16Rep    = Int16Slot
+primRepSlot Int32Rep    = Int32Slot
+primRepSlot Int64Rep    = Int64Slot
 primRepSlot WordRep     = WordSlot
-primRepSlot Word8Rep    = WordSlot
-primRepSlot Word16Rep   = WordSlot
-primRepSlot Word32Rep   = WordSlot
+primRepSlot Word8Rep    = Word8Slot
+primRepSlot Word16Rep   = Word16Slot
+primRepSlot Word32Rep   = Word32Slot
 primRepSlot Word64Rep   = Word64Slot
-primRepSlot AddrRep     = WordSlot
+primRepSlot AddrRep     = AddrSlot
 primRepSlot FloatRep    = FloatSlot
 primRepSlot DoubleRep   = DoubleSlot
 primRepSlot VecRep{}    = pprPanic "primRepSlot" (text "No slot for VecRep")
 
 slotPrimRep :: SlotTy -> PrimRep
-slotPrimRep PtrSlot     = LiftedRep   -- choice between lifted & unlifted seems arbitrary
-slotPrimRep Word64Slot  = Word64Rep
-slotPrimRep WordSlot    = WordRep
-slotPrimRep DoubleSlot  = DoubleRep
-slotPrimRep FloatSlot   = FloatRep
+slotPrimRep LiftedSlot   = LiftedRep
+slotPrimRep UnliftedSlot = UnliftedRep
+slotPrimRep IntSlot      = IntRep
+slotPrimRep Int8Slot     = Int8Rep
+slotPrimRep Int16Slot    = Int16Rep
+slotPrimRep Int32Slot    = Int32Rep
+slotPrimRep Int64Slot    = Int64Rep
+slotPrimRep WordSlot     = WordRep
+slotPrimRep Word8Slot    = Word8Rep
+slotPrimRep Word16Slot   = Word16Rep
+slotPrimRep Word32Slot   = Word32Rep
+slotPrimRep Word64Slot   = Word64Rep
+slotPrimRep AddrSlot     = AddrRep
+slotPrimRep FloatSlot    = FloatRep
+slotPrimRep DoubleSlot   = DoubleRep
 
 -- | Returns the bigger type if one fits into the other. (commutative)
 fitsIn :: SlotTy -> SlotTy -> Maybe SlotTy
 fitsIn ty1 ty2
+  | ty1 == ty2
+  = Just ty1
+  | otherwise
+  = Nothing
+{-
   | isWordSlot ty1 && isWordSlot ty2
   = Just (max ty1 ty2)
   | isFloatSlot ty1 && isFloatSlot ty2
@@ -301,7 +335,7 @@ fitsIn ty1 ty2
     isFloatSlot DoubleSlot = True
     isFloatSlot FloatSlot  = True
     isFloatSlot _          = False
-
+-}
 
 {- **********************************************************************
 *                                                                       *

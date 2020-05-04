@@ -77,6 +77,7 @@ import System.FilePath
 import System.IO
 import Control.Monad
 import Data.List        ( isInfixOf, intercalate )
+import Data.Containers.ListUtils (nubOrd)
 import Data.Maybe
 import Data.Version
 import Data.Either      ( partitionEithers )
@@ -1635,7 +1636,7 @@ getHCFilePackages filename =
 
 -----------------------------------------------------------------------------
 -- External STG linking, of .stgbin files
-
+{-
 getRecursiveContents :: String -> FilePath -> IO [FilePath]
 getRecursiveContents ext topdir = do
   names <- getDirectoryContents topdir
@@ -1647,7 +1648,7 @@ getRecursiveContents ext topdir = do
       then getRecursiveContents ext path
       else pure $ filter ((== ext) . takeExtension) [path]
   return (concat paths)
-
+-}
 -----------------------------------------------------------------------------
 -- Static linking, of .o files
 
@@ -1728,7 +1729,7 @@ linkBinary' staticLink dflags o_files dep_packages = do
               in ["-L" ++ l] ++ ["-Xlinker", "-rpath", "-Xlinker", libpath]
          | otherwise = ["-L" ++ l]
 
-
+{-
     -- list stgbins
     let stgbin_ext = "." ++ objectSuf dflags ++ "_stgbin"
         stgbin_path = map takeDirectory o_files ++ pkg_lib_paths
@@ -1740,7 +1741,7 @@ linkBinary' staticLink dflags o_files dep_packages = do
     --when (ghcLink dflags == LinkBinary && staticLink == False) $ do
     unless staticLink $ do
       runGrin dflags $ map (SysTools.FileOption "") stgbins ++ [SysTools.Option "-o", SysTools.FileOption "" output_fn]
-
+-}
     pkg_lib_path_opts <-
       if gopt Opt_SingleLibFolder dflags
       then do
@@ -1807,7 +1808,7 @@ linkBinary' staticLink dflags o_files dep_packages = do
     let link = if staticLink
                    then SysTools.runLibtool
                    else SysTools.runLink
-    link dflags (
+    let linkOpts = (
                        map SysTools.Option verbFlags
                       ++ [ SysTools.Option "-o"
                          , SysTools.FileOption "" output_fn
@@ -1876,6 +1877,36 @@ linkBinary' staticLink dflags o_files dep_packages = do
                           then [ "-Wl,-dead_strip_dylibs" ]
                           else [])
                     ))
+
+    link dflags linkOpts
+    {-
+      ghc_stgapp:
+      output_fn
+      package_hs_libs
+      extra_libs
+      other_flags
+      pkg_lib_paths
+    -}
+    (package_hs_libs, extra_libs, other_flags) <- getPackageLinkOpts dflags dep_packages
+    pkgIncludePaths <- getPackageIncludePath dflags dep_packages
+    root <- getCurrentDirectory
+
+    pkgConfRefs <- getPackageConfRefs dflags
+    pkgConfPath <- catMaybes <$> mapM (resolvePackageDatabase dflags) pkgConfRefs
+    let ppSection l = unlines ["- " ++ x | x <- nubOrd $ map show l]
+    writeFile (output_fn -<.> ".ghc_stgapp") $ unlines
+      [ "root:"               , ppSection [root]
+      , "package_hs_libs:"    , ppSection package_hs_libs
+      , "extra_libs:"         , ppSection extra_libs
+      , "other_flags:"        , ppSection other_flags
+      , "pkg_lib_paths:"      , ppSection pkg_lib_paths
+      , "dep_packages:"       , ppSection $ map installedUnitIdString dep_packages
+      , "o_files:"            , ppSection o_files
+      , "extra_ld_inputs:"    , ppSection [ f | FileOption _ f <- ldInputs dflags ]
+      , "pkg_db_paths:"       , ppSection pkgConfPath
+      , "pkg_include_paths:"  , ppSection pkgIncludePaths
+      , "ld_command_opts:"    , ppSection $ map showOpt linkOpts
+      ]
 
 exeFileName :: Bool -> DynFlags -> FilePath
 exeFileName staticLink dflags
@@ -1967,6 +1998,10 @@ linkStaticLib dflags o_files dep_packages = do
   let extra_ld_inputs = [ f | FileOption _ f <- ldInputs dflags ]
       modules = o_files ++ extra_ld_inputs
       output_fn = exeFileName True dflags
+
+  putStrLn "linkStaticLib"
+  putStrLn $ "  o_files:          " ++ unwords o_files
+  putStrLn $ "  extra_ld_inputs:  " ++ unwords extra_ld_inputs
 
   full_output_fn <- if isAbsolute output_fn
                     then return output_fn

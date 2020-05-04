@@ -215,7 +215,7 @@ import Outputable
 import GHC.Types.RepType
 import GHC.Stg.Syntax
 import Type
-import TysPrim (intPrimTy,wordPrimTy,word64PrimTy)
+import TysPrim
 import TysWiredIn
 import UniqSupply
 import Util
@@ -303,14 +303,14 @@ unariseExpr rho e@(StgApp f [] (_,o))
       Just (MultiVal args)  -- Including empty tuples
         -> return (mkTuple args)
       Just (UnaryVal (StgVarArg f'))
-        -> return (StgApp f' [] (idType f', o ++ "/Unarise-StgApp-Var"))
+        -> return (StgApp f' [] (idType f', o ++ "/UnariseStgAppVar"))
       Just (UnaryVal (StgLitArg f'))
         -> return (StgLit f')
       Nothing
         -> return e
 
 unariseExpr rho e@(StgApp f args (ty,o))
-  = return (StgApp f' (unariseFunArgs rho args) (ty,o ++ "Unarise-StgApp")) -- TODO: is this OK????
+  = return (StgApp f' (unariseFunArgs rho args) (ty,o ++ "/UnariseStgApp")) -- TODO: is this OK????
   where
     f' = case lookupVarEnv rho f of
            Just (UnaryVal (StgVarArg f')) -> f'
@@ -404,7 +404,7 @@ elimCase rho args bndr (MultiValAlt _) alts
           -- this won't be used but we need a binder anyway
        let rho1 = extendRho rho bndr (MultiVal args)
            scrut' = case tag_arg of
-                      StgVarArg v     -> StgApp v [] (idType v, "Unarise-StgVarArg")
+                      StgVarArg v     -> StgApp v [] (idType v, "UnariseStgVarArg")
                       StgLitArg l     -> StgLit l
 
        alts' <- unariseSumAlts rho1 real_args alts
@@ -446,7 +446,7 @@ unariseAlts rho (MultiValAlt _) bndr alts
   | isUnboxedSumBndr bndr
   = do (rho_sum_bndrs, scrt_bndrs@(tag_bndr : real_bndrs)) <- unariseConArgBinder rho bndr
        alts' <- unariseSumAlts rho_sum_bndrs (map StgVarArg real_bndrs) alts
-       let inner_case = StgCase (StgApp tag_bndr [] (idType tag_bndr, "Unarise-TagVar")) tag_bndr tagAltTy alts'
+       let inner_case = StgCase (StgApp tag_bndr [] (idType tag_bndr, "UnariseTagVar")) tag_bndr tagAltTy alts'
        return [ (DataAlt (tupleDataCon Unboxed (length scrt_bndrs)),
                  scrt_bndrs,
                  inner_case) ]
@@ -580,10 +580,22 @@ mkUbxSum dc ty_args args0
         = slotRubbishArg slot : mkTupArgs (arg_idx + 1) slots_left arg_map
 
       slotRubbishArg :: SlotTy -> StgArg
-      slotRubbishArg PtrSlot    = StgVarArg aBSENT_SUM_FIELD_ERROR_ID
+      slotRubbishArg LiftedSlot     = StgVarArg aBSENT_SUM_FIELD_ERROR_ID
+      slotRubbishArg UnliftedSlot   = StgVarArg aBSENT_SUM_FIELD_ERROR_ID
                          -- See Note [aBSENT_SUM_FIELD_ERROR_ID] in MkCore
+      slotRubbishArg IntSlot    = StgLitArg (LitNumber LitNumInt 0 intPrimTy)
+      slotRubbishArg Int8Slot   = StgLitArg (LitNumber LitNumInt 0 int8PrimTy)
+      slotRubbishArg Int16Slot  = StgLitArg (LitNumber LitNumInt 0 int16PrimTy)
+      slotRubbishArg Int32Slot  = StgLitArg (LitNumber LitNumInt 0 int32PrimTy)
+      slotRubbishArg Int64Slot  = StgLitArg (LitNumber LitNumInt64 0 int64PrimTy)
+
       slotRubbishArg WordSlot   = StgLitArg (LitNumber LitNumWord 0 wordPrimTy)
+      slotRubbishArg Word8Slot  = StgLitArg (LitNumber LitNumWord 0 word8PrimTy)
+      slotRubbishArg Word16Slot = StgLitArg (LitNumber LitNumWord 0 word16PrimTy)
+      slotRubbishArg Word32Slot = StgLitArg (LitNumber LitNumWord 0 word32PrimTy)
       slotRubbishArg Word64Slot = StgLitArg (LitNumber LitNumWord64 0 word64PrimTy)
+
+      slotRubbishArg AddrSlot   = StgLitArg (LitNumber LitNumWord 0 wordPrimTy)
       slotRubbishArg FloatSlot  = StgLitArg (LitFloat 0)
       slotRubbishArg DoubleSlot = StgLitArg (LitDouble 0)
     in

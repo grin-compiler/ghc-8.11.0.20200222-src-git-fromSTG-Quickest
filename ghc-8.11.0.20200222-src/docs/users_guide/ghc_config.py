@@ -10,7 +10,7 @@ libs_base_uri = '../libraries'
 lib_versions = {
     'base': '4.14.0.0',
     'ghc-prim': '0.6.1',
-    'template-haskell': '',
+    'template-haskell': '2.16.0.0',
     'ghc-compact': '0.1.0.0',
     'ghc': '8.11.0.20200222',
     'parallel': '@LIBRARY_parallel_VERSION@',

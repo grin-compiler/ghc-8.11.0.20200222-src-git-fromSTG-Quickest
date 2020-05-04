@@ -110,16 +110,18 @@ import Distribution.Types.UnqualComponentName
 import Distribution.Utils.NubList
 import Language.Haskell.Extension
 
+import Data.Containers.ListUtils (nubOrd)
 import Control.Exception
 import Control.Monad (msum, forM_)
 import Data.Char (isLower)
 import qualified Data.Map as Map
 import System.Directory
          ( doesFileExist, getAppUserDataDirectory, createDirectoryIfMissing
-         , canonicalizePath, removeFile, renameFile, getDirectoryContents )
-import System.FilePath          ( (</>), (<.>), takeExtension
+         , canonicalizePath, removeFile, renameFile, getDirectoryContents
+         , getCurrentDirectory )
+import System.FilePath          ( (</>), (-<.>), (<.>), takeExtension
                                 , takeDirectory, replaceExtension
-                                ,isRelative )
+                                , isRelative, normalise )
 import qualified System.Info
 #ifndef mingw32_HOST_OS
 import System.Posix (createSymbolicLink)
@@ -774,7 +776,7 @@ buildOrReplLib mReplFlags verbosity numJobs pkg_descr lbi lib clbi = do
 
   -- link:
   when has_code . unless forRepl $ do
-    info verbosity "Linking..."
+    info verbosity "Linking1..."
     let cProfObjs            = map (`replaceExtension` ("p_" ++ objExtension))
                                (cSources libBi ++ cxxSources libBi)
         cSharedObjs          = map (`replaceExtension` ("dyn_" ++ objExtension))
@@ -917,6 +919,16 @@ buildOrReplLib mReplFlags verbosity numJobs pkg_descr lbi lib clbi = do
       info verbosity (show (ghcOptPackages ghcSharedLinkArgs))
 
       whenVanillaLib False $ do
+        -- stglib: stgbin archive
+        stgFiles <- Internal.getHaskellObjects implInfo lib lbi clbi libTargetDir (objExtension ++ "_stgbin") True
+        let cLikeObjs = map (libTargetDir </>) cObjs
+            modules = map prettyShow $ explicitLibModules lib
+        writeStgLib libBi clbi cLikeObjs cLikeFiles stgFiles modules (vanillaLibFilePath -<.> "stglib")
+        unless (null stgFiles) $ do
+          Ar.createArLibArchive verbosity lbi (vanillaLibFilePath -<.> ".stgbin.a") stgFiles
+        unless (null cObjs) $ do
+          Ar.createArLibArchive verbosity lbi (vanillaLibFilePath -<.> ".cbits.a") cLikeObjs
+        -------------------------
         Ar.createArLibArchive verbosity lbi vanillaLibFilePath staticObjectFiles
         whenGHCiLib $ do
           (ldProg, _) <- requireProgram verbosity ldProgram (withPrograms lbi)
@@ -935,6 +947,86 @@ buildOrReplLib mReplFlags verbosity numJobs pkg_descr lbi lib clbi = do
 
       whenStaticLib False $
         runGhcProg ghcStaticLinkArgs
+
+-------------------------
+-- TODO: stgbin archive
+  {-
+    IDEA: keep structured data from cabal
+    things to archive:
+      done - haskell module stg bins: hStgbins
+      done - c like objects:          cObjs
+      done - c/cxx/cmm/asm sources:   cLikeFiles
+        cSources    libBi
+        cxxSources  libBi
+        cmmSources  libBi
+        asmSources  libBi
+      - extra libs + dirs:
+          extraLibs libBi
+          toNubListR $ extraLibDirs libBi
+      - linker options
+      - dependencies
+
+    - objects, extra libs
+    - paths
+    - options
+
+
+    -------
+  asmOptions        :: [String],  -- ^ options for assmebler
+  cmmOptions        :: [String],  -- ^ options for C-- compiler
+  ccOptions         :: [String],  -- ^ options for C compiler
+  cxxOptions        :: [String],  -- ^ options for C++ compiler
+
+  asmSources        :: [FilePath], -- ^ Assembly files.
+  cmmSources        :: [FilePath], -- ^ C-- files.
+  cSources          :: [FilePath],
+  cxxSources        :: [FilePath],
+
+  extraLibs         :: [String], -- ^ what libraries to link with when compiling a program that uses your package
+  extraLibDirs      :: [String],
+
+  componentPackageDeps :: [(UnitId, MungedPackageId)]
+
+  ldOptions         :: [String],  -- ^ options for linker
+
+
+  PLAN:
+    1. export printed file lists
+    2. create archive with files
+
+  -}
+
+writeStgLib :: BuildInfo -> ComponentLocalBuildInfo -> [FilePath] -> [FilePath] -> [FilePath] -> [String] -> FilePath -> IO ()
+writeStgLib libBi clbi cObjs cLikeFiles hStgbins modules stgbinArName = do
+  root <- getCurrentDirectory
+
+  let ppSection l = unlines ["- " ++ x | x <- nubOrd $ map show l]
+      stglib = unlines
+        -- non HS objects
+        [ "root:"        , ppSection [root]
+        , "cObjs:"       , ppSection cObjs
+        , "cLikeFiles:"  , ppSection cLikeFiles
+        , "asmSources:"  , ppSection (asmSources libBi)
+        , "asmOptions:"  , ppSection (asmOptions libBi)
+        , "cmmSources:"  , ppSection (cmmSources libBi)
+        , "cmmOptions:"  , ppSection (cmmOptions libBi)
+        , "cSources:"    , ppSection (cSources libBi)
+        , "ccOptions:"   , ppSection (ccOptions libBi)
+        , "cxxSources:"  , ppSection (cxxSources libBi)
+        , "cxxOptions:"  , ppSection (cxxOptions libBi)
+        -- exta libs / non HS dependencies
+        , "extraLibs:"   , ppSection (extraLibs libBi)
+        , "extraLibDirs:", ppSection (extraLibDirs libBi)
+        -- ld options
+        , "ldOptions:"   , ppSection (ldOptions libBi)
+        -- HS dependencies
+        , "componentPackageDeps:", ppSection [unUnitId uid | (uid, _) <- componentPackageDeps clbi]
+        -- HS object origins
+        , "hStgbins:"    , ppSection hStgbins
+        -- HS modules
+        , "modules:"     , ppSection modules
+        ]
+  writeFile stgbinArName $ stglib
 
 -- | Start a REPL without loading any source files.
 startInterpreter :: Verbosity -> ProgramDb -> Compiler -> Platform
@@ -1492,7 +1584,7 @@ gbuild verbosity numJobs pkg_descr lbi bm clbi = do
                      }
                    `mappend` (if withDynExe lbi then dynLinkerOpts else mempty)
 
-      info verbosity "Linking..."
+      info verbosity "Linking EXE123..."
       -- Work around old GHCs not relinking in this
       -- situation, see #3294
       let target = targetDir </> targetName
@@ -1500,6 +1592,32 @@ gbuild verbosity numJobs pkg_descr lbi bm clbi = do
         e <- doesFileExist target
         when e (removeFile target)
       runGhcProg linkOpts { ghcOptOutputFile = toFlag target }
+
+      ------------------- NEW
+      info verbosity "Generating .dependecies.mk"
+      -- gen dependencies
+      let depOpts = (componentGhcOptions verbosity lbi bnfo clbi tmpDir)
+                    `mappend` mempty {
+                      ghcOptMode         = toFlag GhcModeLink,
+                      ghcOptInputFiles   = toNubListR inputFiles,
+                      ghcOptInputModules = toNubListR inputModules,
+                      ghcOptExtraDefault = ["-dep-suffix", "", "-dep-makefile .dependencies.mk", "-M"]
+--                      , ghcOptExtra        = ["-M"]
+                    }
+      runGhcProg depOpts
+      ------------------- generate stgapp
+      let cLikeObjs     = [tmpDir </> x | x <- cObjs ++ cxxObjs]
+          cLikeFiles    = cSrcs ++ cxxSrcs
+          objExtension
+            | needProfiling = "p_o"
+            | needDynamic   = "dyn_o"
+            | otherwise     = "o"
+          stgExtension  = objExtension ++ "_stgbin"
+          stgFiles      = [normalise (tmpDir </> s -<.> stgExtension) | s <- inputFiles ++ map ModuleName.toFilePath inputModules]
+          modules       = map prettyShow inputModules
+      writeStgLib (gbuildInfo bm) clbi cLikeObjs cLikeFiles stgFiles modules (target -<.> ".stgapp")
+      -------------------
+
     GBuildFLib flib -> do
       let rtsInfo  = extractRtsInfo lbi
           rtsOptLinkLibs = [
@@ -1539,7 +1657,7 @@ gbuild verbosity numJobs pkg_descr lbi bm clbi = do
       -- We build under a (potentially) different filename to set a
       -- soname on supported platforms.  See also the note for
       -- @flibBuildName@.
-      info verbosity "Linking..."
+      info verbosity "Linking2..."
       let buildName = flibBuildName lbi flib
       runGhcProg linkOpts { ghcOptOutputFile = toFlag (targetDir </> buildName) }
       renameFile (targetDir </> buildName) (targetDir </> targetName)
@@ -1929,13 +2047,32 @@ installLib verbosity lbi targetDir dynlibTargetDir _builtDir pkg lib clbi = do
         whenVanilla $ copyModuleFiles "o_stgbin"
         whenProf    $ copyModuleFiles "p_o_stgbin"
         whenShared  $ copyModuleFiles "dyn_o_stgbin"
+
       handleCopyEx :: SomeException -> IO ()
       handleCopyEx _ = pure ()
+
   catch copyStgBins handleCopyEx
+
+  let myInstall srcDir dstDir name = do
+        let src = srcDir </> name
+            dst = dstDir </> name
+        exists <- doesFileExist src
+        when exists $ do
+          createDirectoryIfMissingVerbose verbosity True dstDir
+          installOrdinaryFile verbosity src dst
+
+  let copyStglib = do
+        let libName = mkGenericStaticLibName (getHSLibraryName $ componentUnitId clbi)
+        myInstall builtDir targetDir $ libName -<.> ".stglib"
+        myInstall builtDir targetDir $ libName -<.> ".cbits.a"
+        myInstall builtDir targetDir $ libName -<.> ".stgbin.a"
 
   -- copy the built library files over:
   whenHasCode $ do
     whenVanilla $ do
+      -- stglib
+      catch copyStglib handleCopyEx
+      -----------------
       sequence_ [ installOrdinary
                     builtDir
                     targetDir

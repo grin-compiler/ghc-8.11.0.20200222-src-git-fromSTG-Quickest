@@ -23,7 +23,7 @@
 
 # TOP: the top of the fptools hierarchy, absolute path.
 # On Windows this is a c:/foo/bar style path.
-TOP		= /home/csaba/haskell/ghc-gitlab/gitlab-ghc-fresh/ghc
+TOP		= /home/csaba/haskell/ghc-gitlab/ghc-8.11.0.20200222-src-git-fromSTG-Quickest/ghc-8.11.0.20200222-src
 
 include $(TOP)/mk/project.mk
 
@@ -465,8 +465,8 @@ BOOTSTRAPPING_CONF = libraries/bootstrapping.conf
 
 INPLACE_PACKAGE_CONF = $(INPLACE_LIB)/package.conf.d
 
-GhcVersion	= 8.6.2
-GhcPatchLevel	= 2
+GhcVersion	= 8.6.5
+GhcPatchLevel	= 5
 GhcMajVersion	= 8
 GhcMinVersion	= 6
 

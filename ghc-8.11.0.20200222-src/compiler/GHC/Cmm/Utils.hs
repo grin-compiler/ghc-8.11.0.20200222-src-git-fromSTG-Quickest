@@ -13,7 +13,7 @@
 
 module GHC.Cmm.Utils(
         -- CmmType
-        primRepCmmType, slotCmmType, slotForeignHint,
+        primRepCmmType, {-slotCmmType, slotForeignHint, -}
         typeCmmType, typeForeignHint, primRepForeignHint,
 
         -- CmmLit
@@ -116,14 +116,14 @@ primRepCmmType dflags AddrRep          = bWord dflags
 primRepCmmType _      FloatRep         = f32
 primRepCmmType _      DoubleRep        = f64
 primRepCmmType _      (VecRep len rep) = vec len (primElemRepCmmType rep)
-
+{-
 slotCmmType :: DynFlags -> SlotTy -> CmmType
 slotCmmType dflags PtrSlot    = gcWord dflags
 slotCmmType dflags WordSlot   = bWord dflags
 slotCmmType _      Word64Slot = b64
 slotCmmType _      FloatSlot  = f32
 slotCmmType _      DoubleSlot = f64
-
+-}
 primElemRepCmmType :: PrimElemRep -> CmmType
 primElemRepCmmType Int8ElemRep   = b8
 primElemRepCmmType Int16ElemRep  = b16
@@ -157,14 +157,14 @@ primRepForeignHint AddrRep      = AddrHint -- NB! AddrHint, but NonPtrArg
 primRepForeignHint FloatRep     = NoHint
 primRepForeignHint DoubleRep    = NoHint
 primRepForeignHint (VecRep {})  = NoHint
-
+{-
 slotForeignHint :: SlotTy -> ForeignHint
 slotForeignHint PtrSlot       = AddrHint
 slotForeignHint WordSlot      = NoHint
 slotForeignHint Word64Slot    = NoHint
 slotForeignHint FloatSlot     = NoHint
 slotForeignHint DoubleSlot    = NoHint
-
+-}
 typeForeignHint :: UnaryType -> ForeignHint
 typeForeignHint = primRepForeignHint . typePrimRep1
 

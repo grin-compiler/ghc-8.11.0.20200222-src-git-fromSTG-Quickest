@@ -82,6 +82,7 @@ import GHC.Iface.Load
 import PrelNames
 import TysWiredIn
 import Id
+import IdInfo( IdDetails(..) )
 import Var
 import RdrName
 import InstEnv
@@ -1012,7 +1013,7 @@ mkStableIdFromString str sig_ty loc occ_wrapper = do
     name <- mkWrapperName "stable" str
     let occ = mkVarOccFS name :: OccName
         gnm = mkExternalName uniq mod (occ_wrapper occ) loc :: Name
-        id  = mkExportedVanillaId gnm sig_ty :: Id
+        id  = mkExportedLocalId FExportedId gnm sig_ty :: Id
     return id
 
 mkStableIdFromName :: Name -> Type -> SrcSpan -> (OccName -> OccName) -> TcM TcId

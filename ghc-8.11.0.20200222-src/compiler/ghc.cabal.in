@@ -460,6 +460,7 @@ Library
         GHC.Stg.DepAnal
         Stg.Syntax
         Stg.Convert
+        Stg.UnariseType
         GHC.CoreToStg
         GHC.CoreToStg.Prep
         GHC.Types.RepType
