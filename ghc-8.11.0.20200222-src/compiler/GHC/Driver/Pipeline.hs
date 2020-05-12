@@ -1560,6 +1560,11 @@ runPhase (RealPhase MergeForeign) input_fn dflags
      if null foreign_os
        then panic "runPhase(MergeForeign): no foreign objects"
        else do
+         -- gen stub object
+         let (o_base, o_ext)  = splitExtension output_fn
+             stub_output_fn   = o_base ++ "_stub" ++ o_ext
+         liftIO $ joinObjectFiles dflags foreign_os stub_output_fn
+         ----------------
          liftIO $ joinObjectFiles dflags (input_fn : foreign_os) output_fn
          return (RealPhase StopLn, output_fn)
 

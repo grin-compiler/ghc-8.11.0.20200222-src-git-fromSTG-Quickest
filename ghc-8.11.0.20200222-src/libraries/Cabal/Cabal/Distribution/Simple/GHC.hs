@@ -796,6 +796,10 @@ buildOrReplLib mReplFlags verbosity numJobs pkg_descr lbi lib clbi = do
         sharedLibInstallPath = libInstallPath </>
                                mkSharedLibName (hostPlatform lbi) compiler_id uid
 
+    extStgStubObjs <- catMaybes <$> sequenceA
+      [ findFileWithExtension [objExtension] [libTargetDir]
+          (ModuleName.toFilePath x ++"_stub")
+      | x <- allLibModules lib clbi ]
     stubObjs <- catMaybes <$> sequenceA
       [ findFileWithExtension [objExtension] [libTargetDir]
           (ModuleName.toFilePath x ++"_stub")
@@ -923,11 +927,13 @@ buildOrReplLib mReplFlags verbosity numJobs pkg_descr lbi lib clbi = do
         stgFiles <- Internal.getHaskellObjects implInfo lib lbi clbi libTargetDir (objExtension ++ "_stgbin") True
         let cLikeObjs = map (libTargetDir </>) cObjs
             modules = map prettyShow $ explicitLibModules lib
-        writeStgLib libBi clbi cLikeObjs cLikeFiles stgFiles modules (vanillaLibFilePath -<.> "stglib")
-        unless (null stgFiles) $ do
-          Ar.createArLibArchive verbosity lbi (vanillaLibFilePath -<.> ".stgbin.a") stgFiles
+        writeStgLib libBi clbi cLikeObjs cLikeFiles stgFiles modules (vanillaLibFilePath -<.> ".stglib")
+        -- cbits archive
         unless (null cObjs) $ do
           Ar.createArLibArchive verbosity lbi (vanillaLibFilePath -<.> ".cbits.a") cLikeObjs
+        -- stubs archive
+        unless (null extStgStubObjs) $ do
+          Ar.createArLibArchive verbosity lbi (vanillaLibFilePath -<.> ".stubs.a") extStgStubObjs
         -------------------------
         Ar.createArLibArchive verbosity lbi vanillaLibFilePath staticObjectFiles
         whenGHCiLib $ do
@@ -936,6 +942,14 @@ buildOrReplLib mReplFlags verbosity numJobs pkg_descr lbi lib clbi = do
             ghciLibFilePath staticObjectFiles
 
       whenProfLib $ do
+        {-
+        -- TODO: make this complete
+        -- stglib: stgbin archive
+        unless (null cProfObjs) $ do
+          let cLikeProfObjs = map (libTargetDir </>) cProfObjs
+          Ar.createArLibArchive verbosity lbi (profileLibFilePath -<.> ".cbits.a") cLikeProfObjs
+        -}
+        -------------------------
         Ar.createArLibArchive verbosity lbi profileLibFilePath profObjectFiles
         whenGHCiLib $ do
           (ldProg, _) <- requireProgram verbosity ldProgram (withPrograms lbi)
@@ -2061,17 +2075,17 @@ installLib verbosity lbi targetDir dynlibTargetDir _builtDir pkg lib clbi = do
           createDirectoryIfMissingVerbose verbosity True dstDir
           installOrdinaryFile verbosity src dst
 
-  let copyStglib = do
+  let copyVanillaStglib = do
         let libName = mkGenericStaticLibName (getHSLibraryName $ componentUnitId clbi)
         myInstall builtDir targetDir $ libName -<.> ".stglib"
         myInstall builtDir targetDir $ libName -<.> ".cbits.a"
-        myInstall builtDir targetDir $ libName -<.> ".stgbin.a"
+        myInstall builtDir targetDir $ libName -<.> ".stubs.a"
 
   -- copy the built library files over:
   whenHasCode $ do
     whenVanilla $ do
       -- stglib
-      catch copyStglib handleCopyEx
+      catch copyVanillaStglib handleCopyEx
       -----------------
       sequence_ [ installOrdinary
                     builtDir

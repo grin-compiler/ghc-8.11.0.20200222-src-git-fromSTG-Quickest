@@ -48,7 +48,6 @@ registerStaticLib root archivePath = do
 writeStgLib :: Context -> FilePath -> Action ()
 writeStgLib context@Context{..} archivePath = do
   ContextData{..} <- interpretInContext context (getContextData id)
-
   let stgExtension = osuf way ++ "_stgbin"
       objExtension = osuf way
 
@@ -61,36 +60,46 @@ writeStgLib context@Context{..} archivePath = do
   let ppSection l = unlines ["- " ++ show x | x <- l]
       stglib = unlines
         -- non HS objects
-        [ "cObjs"       , ppSection cObjs
-        , "cLikeFiles"  , ppSection cLikeFiles
-        , "asmSources"  , ppSection asmSrcs
-        , "asmOptions"  , ppSection asmOpts
-        , "cmmSources"  , ppSection cmmSrcs
-        , "cmmOptions"  , ppSection cmmOpts
-        , "cSources"    , ppSection cSrcs
-        , "ccOptions"   , ppSection ccOpts
-        , "cxxSources"  , ""
-        , "cxxOptions"  , ""
+        [ "cObjs:"        , ppSection cObjs
+        , "cLikeFiles:"   , ppSection cLikeFiles
+        , "asmSources:"   , ppSection asmSrcs
+        , "asmOptions:"   , ppSection asmOpts
+        , "cmmSources:"   , ppSection cmmSrcs
+        , "cmmOptions:"   , ppSection cmmOpts
+        , "cSources:"     , ppSection cSrcs
+        , "ccOptions:"    , ppSection ccOpts
+        , "cxxSources:"   , ""
+        , "cxxOptions:"   , ""
         -- exta libs / non HS dependencies
-        , "extraLibs"   , ppSection extraLibs
-        , "extraLibDirs", ppSection extraLibDirs
+        , "extraLibs:"    , ppSection extraLibs
+        , "extraLibDirs:" , ppSection extraLibDirs
         -- ld options
-        , "ldOptions"   , ppSection ldOpts
+        , "ldOptions:"    , ppSection ldOpts
         -- HS dependencies
-        , "componentPackageDeps"  , ppSection dependencies
+        , "componentPackageDeps:" , ppSection dependencies
         -- HS object origins
-        , "hStgbins"    , ppSection hStgbins
+        , "hStgbins:"     , ppSection hStgbins
+        -- HS modules
+        , "modules:"      , ppSection $ modules ++ otherModules
+        -- debug
+        , "otherModules:" , ppSection $ otherModules
         ]
+
+  -- NOTE: archivePath is already contains the _p suffix in profile mode
+
+  -- stubs archive
+  oStubs <- filterM doesFileExist [base ++ "_stub" ++ ext | m <- hsObjs, let (base, ext) = splitExtension m]
+  let stubsArchivePath = archivePath -<.> "stubs.a"
+  removeFile stubsArchivePath
+  unless (null oStubs) $ do
+    build $ target context (Ar Pack stage) oStubs [stubsArchivePath]
+
   -- cbits archive
   let cbitsArchivePath = archivePath -<.> "cbits.a"
   removeFile cbitsArchivePath
   unless (null cObjs) $ do
     build $ target context (Ar Pack stage) cObjs [cbitsArchivePath]
-  -- stgbin archive
-  let stgbinArchivePath = archivePath -<.> "stgbin.a"
-  removeFile stgbinArchivePath
-  unless (null hStgbins) $ do
-    build $ target context (Ar Pack stage) hStgbins [stgbinArchivePath]
+
   -- stglib metadata
   liftIO $ do
     writeFile (archivePath -<.> "stglib") stglib
