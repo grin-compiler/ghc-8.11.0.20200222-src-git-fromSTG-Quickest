@@ -80,9 +80,7 @@ writeStgLib context@Context{..} archivePath = do
         -- HS object origins
         , "hStgbins:"     , ppSection hStgbins
         -- HS modules
-        , "modules:"      , ppSection $ modules ++ otherModules
-        -- debug
-        , "otherModules:" , ppSection $ otherModules
+        , "modules:"      , ppSection $ modules -- HINT: contains the other modules also
         ]
 
   -- NOTE: archivePath is already contains the _p suffix in profile mode
